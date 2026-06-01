@@ -21,14 +21,44 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, transformWithEsbuild } from 'vite';
 import pkg from '@douyinfe/vite-plugin-semi';
 import path from 'path';
+import { createRequire } from 'module';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
+
+const require = createRequire(import.meta.url);
+// semi-ui >=2.99 no longer exposes this CSS via its package "exports" map,
+// but the file still ships in dist. Resolve the real file path (works under
+// both hoisted and isolated node_modules layouts) so Vite's strict exports
+// resolution doesn't fail the build.
+// Resolve the package main entry, then walk up to the package root, since the
+// "exports" map blocks resolving package.json / arbitrary subpaths directly.
+const semiUiEntry = require.resolve('@douyinfe/semi-ui');
+const semiUiRoot = semiUiEntry.slice(
+  0,
+  semiUiEntry.indexOf(path.join('@douyinfe', 'semi-ui')) +
+    path.join('@douyinfe', 'semi-ui').length,
+);
+const semiCssPath = path.join(semiUiRoot, 'dist/css/semi.css');
+
+// classic depends on semi-ui, which pulls in an old date-fns-tz that needs the
+// date-fns v2 module layout (e.g. ./_lib/cloneObject/index.js). The default
+// frontend depends on date-fns v4, which gets hoisted to the workspace root and
+// breaks date-fns-tz. Pin date-fns to the v2 copy installed for classic so all
+// date-fns imports (including those inside date-fns-tz) resolve consistently.
+const dateFnsEntry = require.resolve('date-fns');
+const dateFnsRoot = dateFnsEntry.slice(
+  0,
+  dateFnsEntry.lastIndexOf(`${path.sep}date-fns${path.sep}`) +
+    `${path.sep}date-fns`.length,
+);
 
 // https://vitejs.dev/config/
 export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@douyinfe/semi-ui/dist/css/semi.css': semiCssPath,
+      'date-fns': dateFnsRoot,
     },
   },
   plugins: [
